@@ -31,7 +31,7 @@ var TIME_LOCATION_CST *time.Location
 
 type Message struct {
 	Taskid  string `json:"taskid"`
-	Pid     int    `json:"pid"`
+	Pid     string    `json:"pid"`
 	Filelog string `json:"filelog"`
 	Status  bool   `json:"status"`
 	Errinfo string `json:"errinfo"`
@@ -334,26 +334,33 @@ func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string
 	}
 
 	var msg Message
-	if err := cc.Start(); err != nil {
-		msg.Pid = -1
-		msg.Taskid = taskid
-		msg.Status = false
-		msg.Filelog = ""
-		msg.Errinfo = err.Error()
-		aaa, _ := json.Marshal(msg)
-		return string(aaa)
-	} else {
-
-		msg.Pid = cc.Process.Pid
-		msg.Taskid = taskid
-		msg.Status = true
-		msg.Filelog = "log/" + taskid + ".log"
-		msg.Errinfo = ""
-		aaa, _ := json.Marshal(msg)
-		return string(aaa)
+	msg.Taskid = taskid
+	msg.Status = true
+	msg.Filelog = "log/" + taskid + ".log"
+	msg.Errinfo = ""
+	
+	
+	go startsh(cc)
+	time.Sleep(time.Second * 2)
+	a := `ps ux | awk '/` + taskid + `/ && !/awk/ {print $2}'`
+	result, err := exec.Command("/bin/sh", "-c", a).Output()
+	if err != nil {
+		msg.Pid = "-1"	
+	}else{
+		msg.Pid = strings.ReplaceAll(string(result),"\n","")	
 	}
+	aaa, _ := json.Marshal(msg)
+	return string(aaa)
 }
 
+func startsh(cc *exec.Cmd){
+	
+	if err := cc.Start(); err != nil {
+		
+		log.Println("exec sh error:",err)
+	} 
+	cc.Wait()
+}
 func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	wr := w.Header()
 

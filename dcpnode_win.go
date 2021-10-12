@@ -300,6 +300,8 @@ func init() {
 }
 
 func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string, cmdtype string, cmduser string, cmdname string, taskid string) string {
+  
+    
 
 	if len(command) < 5 || command[len(command)-4:] != ".bat" {
 		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo:"执行命令非法，请检查"}`
@@ -332,25 +334,25 @@ func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string
 	if p1 == "" {
 		cc = exec.Command("cmd","/C", command, taskid)
 	}
-
 	var msg Message
-	if err := cc.Start(); err != nil {
-		msg.Pid = -1
-		msg.Taskid = taskid
-		msg.Status = false
-		msg.Filelog = ""
-		msg.Errinfo = err.Error()
-		aaa, _ := json.Marshal(msg)
-		return string(aaa)
-	} else {
+	msg.Pid = 11111
+	msg.Taskid = taskid
+	msg.Status = true
+	msg.Filelog = "log/" + taskid + ".log"
+	msg.Errinfo = ""
+	aaa, _ := json.Marshal(msg)
+	go startsh(cc)
+	
+	return string(aaa)
+}
 
-		msg.Pid = cc.Process.Pid
-		msg.Taskid = taskid
-		msg.Status = true
-		msg.Filelog = "log/" + taskid + ".log"
-		msg.Errinfo = ""
-		aaa, _ := json.Marshal(msg)
-		return string(aaa)
+func startsh(cc *exec.Cmd){
+	
+	if err := cc.Start(); err != nil {
+	
+		log.Println("exec sh error:",err)	
+	} else{
+		cc.Wait()
 	}
 }
 
