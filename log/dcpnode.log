@@ -425,3 +425,7 @@ created by net/http.(*Server).Serve
 [dcpnode]2021/10/12 16:28:52 run cmd:tongsumex.bat p1:2021-11-11T10:00:00 p2: p3: p4: taskid:1234567
 [dcpnode]2021/10/12 16:28:54 run cmd:tongsumex.bat p1:2021-11-11T10:00:00 p2: p3: p4: taskid:1234567
 [dcpnode]2021/10/12 17:36:32 dcpnode starting,port: 4321
+[dcpnode]2021/10/19 11:10:18 dcpnode starting,port: 4321
+[dcpnode]2021/10/19 11:13:12 run cmd:tongsumex.bat p1: p2: p3: p4: taskid:eaee8a16-2a12-4ec6-92c5-069eee7934d9
+[dcpnode]2021/10/19 11:14:18 run cmd:tongsumex.bat p1: p2: p3: p4: taskid:eaee8a16-2a12-4ec6-92c5-069eee7934d9
+[dcpnode]2021/10/19 11:15:10 dcpnode starting,port: 4321

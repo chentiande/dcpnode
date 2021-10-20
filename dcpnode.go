@@ -302,17 +302,21 @@ func init() {
 func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string, cmdtype string, cmduser string, cmdname string, taskid string) string {
 
 	if len(command) < 4 || command[len(command)-3:] != ".sh" {
+		log.Println("run cmd:" + command,",执行命令非法，请检查")
 		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo:"执行命令非法，请检查"}`
+		
+
 	}
 	if _, err := os.Stat(command); err != nil {
-
+		log.Println("run cmd:" + command,",执行脚本不存在，请检查")
 		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo:"执行脚本不存在，请检查"}`
+		
 
 	}
 
 	if p.cpulimit < p.cpu || p.memlimit < p.mem {
 		errinfo1 := "主机资源超标:cpu=" + strconv.FormatFloat(p.cpu, 'f', -1, 32) + "   mem=" + strconv.FormatFloat(p.mem, 'f', -1, 32)
-
+		log.Println(errinfo1,",执行命令被拒绝")
 		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo":"` + errinfo1 + `"}`
 	}
 	log.Println("run cmd:" + command + " p1:" + p1 + " p2:" + p2 + " p3:" + p3 + " p4:" + p4 + " taskid:" + taskid)
@@ -442,7 +446,7 @@ func main() {
 	if showVer {
 		// Printf( "build name:\t%s\nbuild ver:\t%s\nbuild time:\t%s\nCommitID:%s\n", BuildName, BuildVersion, BuildTime, CommitID )
 		fmt.Printf("build name:\t%s\n", "dcpnode")
-		fmt.Printf("build ver:\t%s\n", "20211011")
+		fmt.Printf("build ver:\t%s\n", "20211020")
 
 		os.Exit(0)
 	}
