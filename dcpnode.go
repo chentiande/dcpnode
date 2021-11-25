@@ -7,11 +7,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,8 +24,11 @@ import (
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/net"
+	"github.com/tidwall/gjson"
 )
+
 var TIME_LOCATION_CST *time.Location
+
 //1、磁盘  内存  cpu 网络 进程数量 信息获取   类型    disk  mem  cpu  network   pro
 //2、进程管理  启动进程   关闭进程    参数
 //3、传送文件    ip  username  passwd    port  source   dest
@@ -31,7 +37,7 @@ var TIME_LOCATION_CST *time.Location
 
 type Message struct {
 	Taskid  string `json:"taskid"`
-	Pid     string    `json:"pid"`
+	Pid     string `json:"pid"`
 	Filelog string `json:"filelog"`
 	Status  bool   `json:"status"`
 	Errinfo string `json:"errinfo"`
@@ -51,16 +57,24 @@ func setsystem(xx *MyMux) {
 	for {
 		//	fmt.Println(xx.cpu)
 		//	fmt.Println(xx.mem)
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 10)
 		var avgcpu float64
 
-		cc, _ := cpu.Percent(time.Second, false)
+		cc, err := cpu.Percent(time.Second, false)
+		if err != nil {
+			log.Println("获取cpu状态错误", err.Error())
+			return
+		}
 		for i := 0; i < len(cc); i++ {
 			avgcpu = avgcpu + cc[i]
 		}
 		xx.cpu = avgcpu / float64(len(cc))
 
-		v, _ := mem.VirtualMemory()
+		v, err1 := mem.VirtualMemory()
+		if err1 != nil {
+			log.Println("获取内存状态错误", err.Error())
+			return
+		}
 		xx.mem = v.UsedPercent
 		xx.pointerLock.Lock()
 		xx.cpu = (avgcpu/float64(len(cc)) + xx.cpu) / 2
@@ -69,7 +83,7 @@ func setsystem(xx *MyMux) {
 	}
 
 }
-
+//获取主机的相关信息，cpu，mem，disk，net
 func getmsg(w http.ResponseWriter, r *http.Request, typename string) {
 	if typename == "cpu" {
 		var avgcpu float64
@@ -127,14 +141,33 @@ func getmsg(w http.ResponseWriter, r *http.Request, typename string) {
 
 	}
 }
-
+//http主函数
 func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	//显示help
+   if r.URL.Path == "/help"{
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	result:=`
+	<h3>###/echo   检查服务状态</h3>
+	<h3>###/api/cmd   执行任务接口  参数cmdname cmdp1 cmdp2 cmdp3 cmdp4 conf f</h3>
+	<h4>/api/cmd      cmdname：sh命令</h4>
+	<h4>/api/cmd      cmdp1：时间参数  now|60|-60 cmdp2 cmdp3 cmdp4 conf f</h4>
+	<h4>/api/cmd      cmdp2 cmdp3 cmdp4 自定义参数</h4>
+	<h4>/api/cmd      conf：根据json生成配置文件 f：删除原有配置文件</h4>
+	<h3>###/api/cmd   执行任务接口  参数cmdname cmdp1 cmdp2 cmdp3 cmdp4 conf f</h3>
+	`
+	fmt.Fprintf(w, result)
+	return 
+   }
+
+	//检查服务状态状态
 	if r.URL.Path == "/echo" {
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 		return
 	}
 
+	//下载文件路径
 	if len(r.URL.Path) > 2 && r.URL.Path[:2] == "/s" {
 
 		filePath := r.URL.Path[len("/s"):]
@@ -162,8 +195,9 @@ func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		file, err := os.Open("./" + filePath)
 		defer file.Close()
 		if err != nil {
-
-			w.WriteHeader(404)
+			w.Header().Set("content-type", "text/css")
+			w.WriteHeader(200)
+			fmt.Fprintf(w, "file not found")
 		} else {
 			bs, _ := ioutil.ReadAll(file)
 
@@ -174,31 +208,34 @@ func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wr := r.Header
-
+//鉴权验证，如果header中没有token，拒绝服务
 	if wr.Get("token") != p.token && p.token != "" {
 		fmt.Fprintf(w, "你没有权限访问该服务")
 		return
 	}
+
+	//执行命令接口
 	if r.URL.Path == "/api/cmd" {
 		index(w, r, p)
 		return
 	}
-
+//检测服务是否正常
 	if r.URL.Path == "/echo" {
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 		return
 	}
+	//文件上传页面
 	if r.URL.Path == "/api/u/52871b0b087ec704631523f0a1776c4a97d7836b" {
 		upfile(w, r, p)
 		return
 	}
-
+   //文件上传接口
 	if r.URL.Path == "/upfilehand" {
 		upfilehand(w, r, p)
 		return
 	}
-
+   
 	if r.URL.Path == "/cpu" {
 		getmsg(w, r, "cpu")
 		return
@@ -225,10 +262,11 @@ func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+//文件上传页面
 func upfile(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 	uploadHTML := `<!DOCTYPE html>
-
  <html> 
  <head> 
  
@@ -239,7 +277,6 @@ func upfile(w http.ResponseWriter, r *http.Request, p *MyMux) {
  <div class="imgBox">
  <input type="file" name="uploadfile" /><br> 
  <input type="submit" value="上传文件" /> <br>
-
  </div>
  </form> 
  </body> 
@@ -251,6 +288,7 @@ func upfile(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	fmt.Fprintf(w, uploadHTML)
 
 }
+//文件上传接口
 func upfilehand(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	if r.Method == "GET" {
 		upfile(w, r, p)
@@ -282,9 +320,11 @@ func upfilehand(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	hstr := hex.EncodeToString(fhash.Sum(nil))
 	w.Write([]byte(fmt.Sprintf("upload finish:%s", hstr)))
 }
+
+//初始化，配置输出日志相关参数设置
 func init() {
 	TIME_LOCATION_CST, _ = time.LoadLocation("Asia/Shanghai")
-	
+
 	_ = os.Mkdir("log", 755)
 	file := "./log/dcpnode.log"
 
@@ -295,31 +335,31 @@ func init() {
 	log.SetOutput(logFile) // 将文件设置为log输出的文件
 	log.SetPrefix("[dcpnode]")
 	//日志标识
-	log.SetFlags(log.Ldate | log.Ltime )
+	log.SetFlags(log.Ldate | log.Ltime)
 	return
 }
 
+//命令接口
 func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string, cmdtype string, cmduser string, cmdname string, taskid string) string {
-
+//如果执行的不是sh命令，拒绝执行
 	if len(command) < 4 || command[len(command)-3:] != ".sh" {
-		log.Println("run cmd:" + command,",执行命令非法，请检查")
+		log.Println("run cmd:"+command, ",执行命令非法，请检查", "taskid:"+taskid)
 		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo:"执行命令非法，请检查"}`
-		
 
 	}
+//如果执行命令不存在，返回提示
 	if _, err := os.Stat(command); err != nil {
-		log.Println("run cmd:" + command,",执行脚本不存在，请检查")
+		log.Println("run cmd:"+command, ",执行脚本不存在，请检查", "taskid:"+taskid)
 		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo:"执行脚本不存在，请检查"}`
-		
 
 	}
-
+//检测当前主机cpu和内存是否超过阈值，如果超过拒绝服务
 	if p.cpulimit < p.cpu || p.memlimit < p.mem {
 		errinfo1 := "主机资源超标:cpu=" + strconv.FormatFloat(p.cpu, 'f', -1, 32) + "   mem=" + strconv.FormatFloat(p.mem, 'f', -1, 32)
-		log.Println(errinfo1,",执行命令被拒绝")
+		log.Println(errinfo1, ",执行命令被拒绝,run cmd:"+command, ",taskid:"+taskid+" p1:"+p1+" p2:"+p2+" p3:"+p3+" p4:"+p4)
 		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo":"` + errinfo1 + `"}`
 	}
-	log.Println("run cmd:" + command + " p1:" + p1 + " p2:" + p2 + " p3:" + p3 + " p4:" + p4 + " taskid:" + taskid)
+	log.Println("run cmd:" + command + " $1:" + taskid+ " $2:" + p1 + " $3:" + p2 + " $4:" + p3 + " $5:" + p4 )
 	var cc *exec.Cmd
 	if p4 != "" {
 		cc = exec.Command("bash", command, taskid, p1, p2, p3, p4)
@@ -336,35 +376,43 @@ func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string
 	if p1 == "" {
 		cc = exec.Command("bash", command, taskid)
 	}
-
+//返回消息定义
 	var msg Message
 	msg.Taskid = taskid
 	msg.Status = true
 	msg.Filelog = "log/" + taskid + ".log"
 	msg.Errinfo = ""
-	
-	
+//启动线程执行命令
 	go startsh(cc)
-	time.Sleep(time.Second * 2)
+	//time.Sleep(time.Second * 2)
+	
+	//检查进程号
 	a := `ps ux | awk '/` + taskid + `/ && !/awk/ {print $2}'`
 	result, err := exec.Command("/bin/sh", "-c", a).Output()
 	if err != nil {
-		msg.Pid = "-1"	
-	}else{
-		msg.Pid = strings.ReplaceAll(string(result),"\n","")	
+
+		log.Println("获取进程号错误", err.Error())
+
+		msg.Pid = "-1"
+	} else {
+		msg.Pid = strings.ReplaceAll(string(result), "\n", "|")
+		log.Println("run cmd:" + command + " taskid:" + taskid + " pid:" + msg.Pid + " p1:" + p1 + " p2:" + p2 + " p3:" + p3 + " p4:" + p4)
 	}
 	aaa, _ := json.Marshal(msg)
 	return string(aaa)
 }
+//启动进程
+func startsh(cc *exec.Cmd) {
 
-func startsh(cc *exec.Cmd){
-	
 	if err := cc.Start(); err != nil {
-		
-		log.Println("exec sh error:",err)
-	} 
+
+		log.Println("exec sh error:", err)
+	}
 	cc.Wait()
 }
+
+
+//执行命令详细接口
 func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	wr := w.Header()
 
@@ -372,17 +420,59 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	wr.Set("Content-Type", "text/html; charset=utf-8")
 	defer r.Body.Close()
 	r.ParseForm()
+
+
+
+
+
+	//如果传参中配置了conf参数，就按照配置文件模板生成配置文件
+	conf := r.Form["conf"]
+
+	if len(conf) == 1 {
+
+      //如果带f参数先删后更新
+		f:=r.Form["f"]
+		if len(f)==1{
+			os.Remove(conf[0])
+		}
+		s, _ := ioutil.ReadAll(r.Body)
+		reg := regexp.MustCompile(`{{[\w.]+}}`)
+
+		str, err := ioutil.ReadFile(conf[0] + ".tmp")
+
+		if err != nil {
+			log.Println(err)
+		}
+
+		result := string(str)
+		dataSlice := reg.FindAll(str, -1)
+		for _, v := range dataSlice {
+			//fmt.Println("vvvv:",string(v))
+			aaaaaa := strings.ReplaceAll(string(v), "{", "")
+			aaaaaa = strings.ReplaceAll(aaaaaa, "}", "")
+			result = strings.ReplaceAll(result, string(v), gjson.Get(string(s), string(aaaaaa)).String())
+
+		}
+
+		//如果配置文件不存在，生成文件
+		if _, err := os.Stat(conf[0]); err != nil {
+			ioutil.WriteFile(conf[0], []byte(result), fs.FileMode(660))
+		}
+
+	}
+	//获取任务号，必要参数
 	taskid := r.Form["taskId"]
 	if len(taskid) < 1 {
 		return
 	}
+	//获取执行命令，必要参数
 	cmdname := r.Form["cmdname"]
 	if len(cmdname) < 1 {
 		return
 	}
 	//btime := r.Form["btime"]
 	//etime := r.Form["etime"]
-
+//时间参数
 	if len(r.Form["cmdp1"]) > 0 {
 		cmdp1 = r.Form["cmdp1"][0]
 	}
@@ -400,8 +490,23 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 		}
 
 	}
+
+//时间参数
 	if len(r.Form["cmdp2"]) > 0 {
 		cmdp2 = r.Form["cmdp2"][0]
+	}
+	if len(cmdp2) > 2 && strings.ToUpper(cmdp2[:3]) == "NOW" {
+
+		allp1 := strings.Split(cmdp2, "|")
+		if len(allp1) > 2 {
+			inteval_int, _ := strconv.Atoi(allp1[1])
+			number_int, _ := strconv.Atoi(allp1[2])
+
+			t2 := time.Now().Add(time.Minute * time.Duration(number_int))
+			cmdp2 = t2.Add(time.Minute * time.Duration(t2.Minute()%inteval_int*-1)).Format("2006-01-02T15:04:00")
+
+		}
+
 	}
 	if len(r.Form["cmdp3"]) > 0 {
 		cmdp3 = r.Form["cmdp3"][0]
@@ -446,14 +551,14 @@ func main() {
 	if showVer {
 		// Printf( "build name:\t%s\nbuild ver:\t%s\nbuild time:\t%s\nCommitID:%s\n", BuildName, BuildVersion, BuildTime, CommitID )
 		fmt.Printf("build name:\t%s\n", "dcpnode")
-		fmt.Printf("build ver:\t%s\n", "20211020")
+		fmt.Printf("build ver:\t%s\n", "20211028")
 
 		os.Exit(0)
 	}
-	//layout := "2006-01-02 15:04:05"
-	//log.Println("本程序为测试程序，测试截止日期为2019年11月15日")
-	//time.Sleep(time.Duration(5) * time.Second)
-	// just one second
+	go func() {
+		log.Println(http.ListenAndServe("localhost:9999", nil))
+	}()
+
 	var one sync.Mutex
 	mux := &MyMux{token, 0, 0, one, cpulimit, memlimit}
 	go setsystem(mux)
