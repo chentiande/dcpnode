@@ -165,7 +165,7 @@ func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//检查服务状态状态
 	if r.URL.Path == "/echo" {
 		w.Header().Set("Content-Type", "text/json; charset=utf-8")
-	
+
 		fmt.Fprintf(w, "{\"status\":\"ok\"}")
 		return
 	}
@@ -213,7 +213,6 @@ func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	wr := r.Header
 	//鉴权验证，如果header中没有token，拒绝服务
 
-	
 	if wr.Get("token") != p.token && p.token != "" {
 		fmt.Fprintf(w, "你没有权限访问该服务")
 		return
@@ -439,7 +438,7 @@ func httppost(token string, url string, body string) (string, error) {
 func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	wr := w.Header()
 	var aaaaaa, bbbbbb string
-	var cmdp1, cmdp2, cmdp3, cmdp4, cmduser, cmdtype, cmdname, taskid, conf, f string
+	var cmdp1, cmdp2, cmdp3, cmdp4, cmduser, cmdtype, cmdname, taskid, conf, hash, omcconf string
 	wr.Set("Content-Type", "text/html; charset=utf-8")
 	defer r.Body.Close()
 	r.ParseForm()
@@ -465,10 +464,16 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 		conf = gjson.Get(string(s), string("conf")).String()
 	}
 
-	if len(r.Form["f"]) > 0 {
-		f = r.Form["f"][0]
+	if len(r.Form["omcconf"]) > 0 {
+		omcconf = r.Form["omcconf"][0]
 	} else {
-		f = gjson.Get(string(s), string("f")).String()
+		omcconf = gjson.Get(string(s), string("omcconf")).String()
+	}
+
+	if len(r.Form["hash"]) > 0 {
+		hash = r.Form["hash"][0]
+	} else {
+		hash = gjson.Get(string(s), string("hash")).String()
 	}
 	//开始时间参数
 	if len(r.Form["cmdp1"]) > 0 {
@@ -542,10 +547,6 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 		//如果带f参数先删后更新
 
-		if f == "true" {
-			os.Remove(conf)
-		}
-
 		reg := regexp.MustCompile(`{{[\w.]+}}`)
 
 		str, err := ioutil.ReadFile(conf + ".tmp")
@@ -553,7 +554,6 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 		if err != nil {
 			log.Println(err)
 		}
-
 
 		//获取参数后可以通过配置文件进行获取再次转发
 		result := string(str)
@@ -594,10 +594,25 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 		}
 
 		//如果配置文件不存在，生成文件
-		if _, err := os.Stat(conf); err != nil {
-			ioutil.WriteFile(conf, []byte(result), fs.FileMode(660))
+
+		if _, err := os.Stat("." + conf + "." + hash); err != nil {
+			ioutil.WriteFile(conf, []byte(result), fs.FileMode(0777))
+			ioutil.WriteFile("."+conf+"."+hash, []byte(hash), fs.FileMode(0777))
 		}
 
+	}
+
+	//如果收到的是omc采集配置文件信息，需要判断是否需要更新文件
+
+	if omcconf != "" {
+		if _, err := os.Stat("." + omcconf + "." + hash); err != nil {
+            fmt.Println(omcconf)
+			cfg, _ := httppost(r.Header.Get("token"), "http://localhost:4321/echo","")
+			result := MakeOmcConf(cfg)
+			ioutil.WriteFile(omcconf, []byte(result), fs.FileMode(0777))
+
+			ioutil.WriteFile("."+omcconf+"."+hash, []byte(hash), fs.FileMode(0777))
+		}
 	}
 
 	switch cmdtype {
@@ -611,6 +626,48 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 	fmt.Fprintf(w, getcmd(p, cmdname, cmdp1, cmdp2, cmdp3, cmdp4, cmdtype, cmduser, cmdname, taskid))
 
+}
+
+
+//根据返回的json创建omc配置xml
+func MakeOmcConf(cfg string) string {
+  
+	reg := regexp.MustCompile(`{{[\w.]+}}`)
+
+		str:=`
+		<?xml version="1.0" encoding="UTF-8" ?>
+<Config>
+<listenport>8888</listenport>
+<token>123</token>
+
+   <!--数据库连接配置信息-->
+  <dbip>localhost</dbip>
+   <dbport>3306</dbport>
+   <dbname>mysql</dbname>
+   <dbuser>root</dbuser>
+   <dbpwd>root</dbpwd>
+   <!--数据库字符集设置为GBK的需要将该选项设置为true-->
+   <dbgbk>{{status}}</dbgbk>
+   </Config>
+
+		
+		`
+
+		//获取参数后可以通过配置文件进行获取再次转发
+		result := str
+		
+		dataSlice := reg.FindAll([]byte(str), -1)
+		for _, v := range dataSlice {
+			
+			aaaaaa:= strings.ReplaceAll(string(v), "{", "")
+			aaaaaa = strings.ReplaceAll(aaaaaa, "}", "")
+			bbbbbb:= gjson.Get(cfg, aaaaaa).String()
+			
+
+			result = strings.ReplaceAll(result, string(v), bbbbbb)
+
+		}
+	return result
 }
 
 func main() {
