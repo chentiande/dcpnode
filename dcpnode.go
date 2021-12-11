@@ -35,6 +35,12 @@ var TIME_LOCATION_CST *time.Location
 //4、日志查看   如果超过1M，截取100行
 //5、定时任务   删除  创建
 
+type OmcCfg struct {
+	Total int                      `json:"total"`
+	Code  int                      `json:"code"`
+	Rows  []map[string]interface{} `json:"rows"`
+}
+
 type Message struct {
 	Taskid  string `json:"taskid"`
 	Pid     string `json:"pid"`
@@ -155,8 +161,7 @@ func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	<h4>/api/cmd      cmdname：sh命令</h4>
 	<h4>/api/cmd      cmdp1：时间参数  now|60|-60 cmdp2 cmdp3 cmdp4 conf f</h4>
 	<h4>/api/cmd      cmdp2 cmdp3 cmdp4 自定义参数</h4>
-	<h4>/api/cmd      conf：根据json生成配置文件 f：删除原有配置文件</h4>
-	<h3>###/api/cmd   执行任务接口  参数cmdname cmdp1 cmdp2 cmdp3 cmdp4 conf f</h3>
+
 	`
 		fmt.Fprintf(w, result)
 		return
@@ -437,7 +442,7 @@ func httppost(token string, url string, body string) (string, error) {
 //执行命令详细接口
 func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	wr := w.Header()
-	var aaaaaa, bbbbbb string
+	var aaaaaa, bbbbbb, dataurl, token string
 	var cmdp1, cmdp2, cmdp3, cmdp4, cmduser, cmdtype, cmdname, taskid, conf, hash, omcconf string
 	wr.Set("Content-Type", "text/html; charset=utf-8")
 	defer r.Body.Close()
@@ -464,10 +469,10 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 		conf = gjson.Get(string(s), string("conf")).String()
 	}
 
-	if len(r.Form["omcconf"]) > 0 {
-		omcconf = r.Form["omcconf"][0]
+	if len(r.Form["identification"]) > 0 {
+		omcconf = r.Form["identification"][0]
 	} else {
-		omcconf = gjson.Get(string(s), string("omcconf")).String()
+		omcconf = gjson.Get(string(s), string("identification")).String()
 	}
 
 	if len(r.Form["hash"]) > 0 {
@@ -475,11 +480,24 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	} else {
 		hash = gjson.Get(string(s), string("hash")).String()
 	}
+
 	//开始时间参数
 	if len(r.Form["cmdp1"]) > 0 {
 		cmdp1 = r.Form["cmdp1"][0]
 	} else {
 		cmdp1 = gjson.Get(string(s), string("cmdp1")).String()
+	}
+
+	if len(r.Form["dataUrl"]) > 0 {
+		dataurl = r.Form["dataUrl"][0]
+	} else {
+		dataurl = gjson.Get(string(s), string("dataUrl")).String()
+	}
+
+	if len(r.Form["token"]) > 0 {
+		token = r.Form["token"][0]
+	} else {
+		token = gjson.Get(string(s), string("token")).String()
 	}
 
 	if len(cmdp1) > 2 && strings.ToUpper(cmdp1[:3]) == "NOW" {
@@ -606,8 +624,8 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 	if omcconf != "" {
 		if _, err := os.Stat("." + omcconf + "." + hash); err != nil {
-            fmt.Println(omcconf)
-			cfg, _ := httppost(r.Header.Get("token"), "http://localhost:4321/echo","")
+		
+			cfg, _ := httppost(token, dataurl+"?dentification="+omcconf+"&token="+token, "")
 			result := MakeOmcConf(cfg)
 			ioutil.WriteFile(omcconf, []byte(result), fs.FileMode(0777))
 
@@ -628,50 +646,170 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 }
 
-
 //根据返回的json创建omc配置xml
+
+
 func MakeOmcConf(cfg string) string {
-  
-	reg := regexp.MustCompile(`{{[\w.]+}}`)
 
-		str:=`
-		<?xml version="1.0" encoding="UTF-8" ?>
-<Config>
-<listenport>8888</listenport>
-<token>123</token>
-
-   <!--数据库连接配置信息-->
-  <dbip>localhost</dbip>
-   <dbport>3306</dbport>
-   <dbname>mysql</dbname>
-   <dbuser>root</dbuser>
-   <dbpwd>root</dbpwd>
-   <!--数据库字符集设置为GBK的需要将该选项设置为true-->
-   <dbgbk>{{status}}</dbgbk>
-   </Config>
-
+	
+//公共部分的模板
+	str := `
+	<?xml version="1.0" encoding="UTF-8"?>
+	<DataSource>
+		<!--省份 -->
+		<province>{{province}}</province>
+		<!-- 数据类型：pm|cm|fm -->
+		<dataType>{{dataType}}</dataType>
+		<!-- 网络类型：5gc|5gr|4gr|234gc -->
+		<networkType>{{networkType}}</networkType>
+		<!-- 厂家ID：hw|zte -->
+		<vendorId>{{vendorId}}</vendorId>
+		<!-- 版本：OMC北向接口指标数据集主版本（如果是厂家私有接口写厂家网管版本或设备型号） -->
+		<version>{{version}}</version>
+		<!-- OMCID -->
+		<equipmentId>{{equipmentId}}</equipmentId>
+		<equipmentType>{{equipmentType}}</equipmentType>
+		<networkName>{{networkName}}</networkName>
 		
+		<!-- OUID（如果是分布式OMC，需要配置ouid做区分） -->
+		<OUID>{{ouid}}</OUID>
+		<!--数据周期，单位分钟 -->
+		<dataPeriod>{{dataPeriod}}</dataPeriod>
+		<delayThreshold>{{delayThreshold}}</delayThreshold>
+		<resourceType>{{resourceType}}</resourceType>
+		<region>{{region}}</region>
+		<specialty>{{specialty}}</specialty>
+		<!-- 采集输出数据共享配置的用户名，可以到config/share/shareConf.xml找对应用户的共享配置信息 -->
+	   <flow>adaptation-equipmentInterface-ftp-sftp-1.0.jar,adaptation-Parser-csv-xml-json-1.0-full.jar,adaptation-calculation.jar,adaptation-shareInterface-hdfs-sftp-ftp.jar</flow> 
+	 <!-- 	<flow>adaptation-equipmentInterface-restful.jar</flow> -->
+		<shareUserName>{{shareUserName}}</shareUserName>
+	
 		`
 
-		//获取参数后可以通过配置文件进行获取再次转发
-		result := str
+
 		
-		dataSlice := reg.FindAll([]byte(str), -1)
-		for _, v := range dataSlice {
-			
-			aaaaaa:= strings.ReplaceAll(string(v), "{", "")
-			aaaaaa = strings.ReplaceAll(aaaaaa, "}", "")
-			bbbbbb:= gjson.Get(cfg, aaaaaa).String()
-			
+//ftp的模板
+	str_ftp := `<!--采集源私有参数放在interfacePara标签下，适配器的各阶段程序都需要配置一个interfacePara。如果适配器各阶段程序不需要配置信息，则interfacePara可省略。interfacePara标签下，根据interfaceType区分处理阶段，主要包括三种：FTP-DownLoad、calculation、DB。 -->
+		<!--ftp或sftp下载，interfaceType值固定写死："DownLoad" -->
+		<interfacePara interfaceType="DownLoad">
+		  <!--协议类型 sftp/ftp-->
+		<protocolType>{{protocolType}}</protocolType>
+		<!-- 数据源ip地址 -->
+		 <ip>{{ip}}</ip>
+		<!-- 数据源端口 -->
+		 <port>{{port}}</port>
+		<!-- 数据源用户名 -->
+		 <username>{{userName}}</username>
+		<!-- 数据源用户密码 -->
+		 <password>{{password}}</password>
+		<!-- 数据源文件路径（多个路径之间用英文分号隔开）-->
+		<remotePath>
+		{{remotePath}}
+		</remotePath> 
+		<!-- 是否需要重命名原始文件名。需要重命名：true;不需要：false(命名规则，文件目录中由括号括起来的部分_原始文件名，作为新文件名)
+			重命名文件中需要拼接哪一级目录，写|目录级数（目录级别从后往前数，是第几级就写数字几）-->
+		<renamefilename>{{renameFileName}}</renamefilename>
+		<!-- 主被动模式(默认为被动模式为false，主动模式为：true) -->
+		 <isPassive>{{isPassive}}</isPassive>
+		<!-- 本地存储目录（如果是采集业务可置空，如果是文件搬移，需要配本地服务器文件存储路径）-->
+		<!--置空，程序默认路径为：../DcpCollector/data/$[dataType]/$[networkType]/$[dataSourceName]/{getTime($[dataTime],yyyyMMddHHmm)}/$[taskId]/datasource/  -->
+		<localPath>{{localPath}}</localPath>
+		<!-- 下载超时时间(默认6000ms) -->
+		<timeout>{{timeout}}</timeout>
+		<!-- 是否开启增量扫描(true|false) -->
+		<openScan>{{openScan}}</openScan>
+		<!-- 是否需要解压(true|false) -->
+		<decompress>{{decompress}}</decompress>
+	   </interfacePara>
+	   
+	   `
 
-			result = strings.ReplaceAll(result, string(v), bbbbbb)
+	  //数据库方式的模板
+		str_db:=`	
+		  <!-- 配置从数据来源库取数据的interfaceType，固定写法DB -->
+		<interfacePara interfaceType="DB">
+		  <!--单次任务输出文件个数-->
+		  <fileOutCount>{{fileOutCount}}</fileOutCount>
+		  <!--数据库类型（1、sybase 2、mysql 3、oracle 4 sqlserver 5、gp）-->
+		  <dbType>{{dbType}}</dbType>
+		  <!--数据库ip-->
+		  <ip>{{ip}}</ip>
+		  <!--数据库端口-->
+		  <port>{{port}}</port>
+		  <!--数据库名称-->
+		  <dbName>{{dbName}}</dbName>
+		  <!--数据库登录用户-->
+		<userName>{{userName}}</userName>
+		  <!--数据库登录用户密码-->
+		  <passWord>{{password}}</passWord>
+		  <!--数据分隔符-->
+		  <separator>{{separators}}</separator>
+		  <shareUserName>{{shareUserName}}</shareUserName>
+		</interfacePara>
+		
+		`
+	//获取一个源数据json数组	
+	var omccofig OmcCfg
 
+	json.Unmarshal([]byte(cfg), &omccofig)
+
+
+	//公共部分
+	result :=json2str(str,omccofig.Rows[0])
+
+
+
+	for i:=0;i<len(omccofig.Rows);i++{
+  if omccofig.Rows[i]["protocolType"].(string)=="jdbc"{
+	result+=json2str(str_db,omccofig.Rows[i])
+  }
+  if omccofig.Rows[i]["protocolType"].(string)=="ftp"|| omccofig.Rows[i]["protocolType"].(string)=="sftp"{
+	result+=json2str(str_ftp,omccofig.Rows[i])
+}
+	}
+
+	return result+`</DataSource>`
+}
+
+//可以通过传送一个数据和模板，可以自动根据模板中的标识进行数据替换
+//str= <aaa>{{aaa}}</aaa>   map="aaa":12345  result=<aaa>12345</aaa>
+
+func json2str(str string,omc map[string]interface{}) string {
+	reg := regexp.MustCompile(`{{[\w.]+}}`)
+	result:=str
+	dataSlice := reg.FindAll([]byte(str), -1)
+	for _, v := range dataSlice {
+
+		aaaaaa := strings.ReplaceAll(string(v), "{", "")
+		aaaaaa = strings.ReplaceAll(aaaaaa, "}", "")
+		fmt.Println(string(v))
+		bbbbbb := omc[aaaaaa]
+		
+
+		switch bbbbbb.(type){
+		case string:
+		 op, ok := bbbbbb.(string)
+		 if ok{
+		 result = strings.ReplaceAll(result, string(v),fmt.Sprintf("%v",op))
+		 }
+		case float64:
+		 op, ok := bbbbbb.(float64)
+		 if ok{
+		 result = strings.ReplaceAll(result, string(v), fmt.Sprintf("%v",op))
+		 }
+		case int64:
+		 op, ok := bbbbbb.(int64)
+		 if ok{
+			result = strings.ReplaceAll(result, string(v), fmt.Sprintf("%v",op))
+		 }
+		default:
 		}
+	}
 	return result
 }
 
-func main() {
 
+func main() {
 	var showVer bool
 	var port string
 	var token string
@@ -687,7 +825,7 @@ func main() {
 	if showVer {
 		// Printf( "build name:\t%s\nbuild ver:\t%s\nbuild time:\t%s\nCommitID:%s\n", BuildName, BuildVersion, BuildTime, CommitID )
 		fmt.Printf("build name:\t%s\n", "dcpnode")
-		fmt.Printf("build ver:\t%s\n", "20211201")
+		fmt.Printf("build ver:\t%s\n", "20211211")
 
 		os.Exit(0)
 	}
