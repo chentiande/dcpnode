@@ -309,7 +309,7 @@ func upfilehand(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 	clientfd, handler, err := r.FormFile("uploadfile")
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		w.Write([]byte("upload failed."))
 		return
 	}
@@ -449,7 +449,6 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	r.ParseForm()
 
 	s, _ := ioutil.ReadAll(r.Body)
-	fmt.Println(gjson.Get(string(s), string("taskId")).String())
 
 	if len(r.Form["taskId"]) > 0 {
 		taskid = r.Form["taskId"][0]
@@ -565,7 +564,7 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 		//如果带f参数先删后更新
 
-		reg := regexp.MustCompile(`{{[\w.]+}}`)
+		reg := regexp.MustCompile(`{{[^}]+}}`)
 
 		str, err := ioutil.ReadFile(conf + ".tmp")
 
@@ -585,7 +584,9 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 			//fmt.Println("vvvv:",string(v))
 			aaaaaa = strings.ReplaceAll(string(v), "{", "")
 			aaaaaa = strings.ReplaceAll(aaaaaa, "}", "")
+
 			bbbbbb = gjson.Get(data, string(aaaaaa)).String()
+
 			bbbbbb = strings.ReplaceAll(bbbbbb, "[", "")
 			bbbbbb = strings.ReplaceAll(bbbbbb, "]", "")
 			bbbbbb = strings.ReplaceAll(bbbbbb, "\"", "")
@@ -611,12 +612,7 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 		}
 
-		//如果配置文件不存在，生成文件
-
-		if _, err := os.Stat("." + conf + "." + hash); err != nil {
-			ioutil.WriteFile(conf, []byte(result), fs.FileMode(0777))
-			ioutil.WriteFile("."+conf+"."+hash, []byte(hash), fs.FileMode(0777))
-		}
+		ioutil.WriteFile(taskid+".xml", []byte(result), fs.FileMode(0777))
 
 	}
 
@@ -624,7 +620,7 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 	if omcconf != "" {
 		if _, err := os.Stat("." + omcconf + "." + hash); err != nil {
-		
+
 			cfg, _ := httppost(token, dataurl+"?dentification="+omcconf+"&token="+token, "")
 			result := MakeOmcConf(cfg)
 			ioutil.WriteFile(omcconf, []byte(result), fs.FileMode(0777))
@@ -648,11 +644,9 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 //根据返回的json创建omc配置xml
 
-
 func MakeOmcConf(cfg string) string {
 
-	
-//公共部分的模板
+	//公共部分的模板
 	str := `
 	<?xml version="1.0" encoding="UTF-8"?>
 	<DataSource>
@@ -686,9 +680,7 @@ func MakeOmcConf(cfg string) string {
 	
 		`
 
-
-		
-//ftp的模板
+	//ftp的模板
 	str_ftp := `<!--采集源私有参数放在interfacePara标签下，适配器的各阶段程序都需要配置一个interfacePara。如果适配器各阶段程序不需要配置信息，则interfacePara可省略。interfacePara标签下，根据interfaceType区分处理阶段，主要包括三种：FTP-DownLoad、calculation、DB。 -->
 		<!--ftp或sftp下载，interfaceType值固定写死："DownLoad" -->
 		<interfacePara interfaceType="DownLoad">
@@ -724,8 +716,8 @@ func MakeOmcConf(cfg string) string {
 	   
 	   `
 
-	  //数据库方式的模板
-		str_db:=`	
+	//数据库方式的模板
+	str_db := `	
 		  <!-- 配置从数据来源库取数据的interfaceType，固定写法DB -->
 		<interfacePara interfaceType="DB">
 		  <!--单次任务输出文件个数-->
@@ -748,66 +740,61 @@ func MakeOmcConf(cfg string) string {
 		</interfacePara>
 		
 		`
-	//获取一个源数据json数组	
+	//获取一个源数据json数组
 	var omccofig OmcCfg
 
 	json.Unmarshal([]byte(cfg), &omccofig)
 
-
 	//公共部分
-	result :=json2str(str,omccofig.Rows[0])
+	result := json2str(str, omccofig.Rows[0])
 
-
-
-	for i:=0;i<len(omccofig.Rows);i++{
-  if omccofig.Rows[i]["protocolType"].(string)=="jdbc"{
-	result+=json2str(str_db,omccofig.Rows[i])
-  }
-  if omccofig.Rows[i]["protocolType"].(string)=="ftp"|| omccofig.Rows[i]["protocolType"].(string)=="sftp"{
-	result+=json2str(str_ftp,omccofig.Rows[i])
-}
+	for i := 0; i < len(omccofig.Rows); i++ {
+		if omccofig.Rows[i]["protocolType"].(string) == "jdbc" {
+			result += json2str(str_db, omccofig.Rows[i])
+		}
+		if omccofig.Rows[i]["protocolType"].(string) == "ftp" || omccofig.Rows[i]["protocolType"].(string) == "sftp" {
+			result += json2str(str_ftp, omccofig.Rows[i])
+		}
 	}
 
-	return result+`</DataSource>`
+	return result + `</DataSource>`
 }
 
 //可以通过传送一个数据和模板，可以自动根据模板中的标识进行数据替换
 //str= <aaa>{{aaa}}</aaa>   map="aaa":12345  result=<aaa>12345</aaa>
 
-func json2str(str string,omc map[string]interface{}) string {
-	reg := regexp.MustCompile(`{{[\w.]+}}`)
-	result:=str
+func json2str(str string, omc map[string]interface{}) string {
+	reg := regexp.MustCompile(`{{[^}]+}}`)
+	result := str
 	dataSlice := reg.FindAll([]byte(str), -1)
 	for _, v := range dataSlice {
 
 		aaaaaa := strings.ReplaceAll(string(v), "{", "")
 		aaaaaa = strings.ReplaceAll(aaaaaa, "}", "")
-		fmt.Println(string(v))
-		bbbbbb := omc[aaaaaa]
-		
 
-		switch bbbbbb.(type){
+		bbbbbb := omc[aaaaaa]
+
+		switch bbbbbb.(type) {
 		case string:
-		 op, ok := bbbbbb.(string)
-		 if ok{
-		 result = strings.ReplaceAll(result, string(v),fmt.Sprintf("%v",op))
-		 }
+			op, ok := bbbbbb.(string)
+			if ok {
+				result = strings.ReplaceAll(result, string(v), fmt.Sprintf("%v", op))
+			}
 		case float64:
-		 op, ok := bbbbbb.(float64)
-		 if ok{
-		 result = strings.ReplaceAll(result, string(v), fmt.Sprintf("%v",op))
-		 }
+			op, ok := bbbbbb.(float64)
+			if ok {
+				result = strings.ReplaceAll(result, string(v), fmt.Sprintf("%v", op))
+			}
 		case int64:
-		 op, ok := bbbbbb.(int64)
-		 if ok{
-			result = strings.ReplaceAll(result, string(v), fmt.Sprintf("%v",op))
-		 }
+			op, ok := bbbbbb.(int64)
+			if ok {
+				result = strings.ReplaceAll(result, string(v), fmt.Sprintf("%v", op))
+			}
 		default:
 		}
 	}
 	return result
 }
-
 
 func main() {
 	var showVer bool
@@ -825,7 +812,7 @@ func main() {
 	if showVer {
 		// Printf( "build name:\t%s\nbuild ver:\t%s\nbuild time:\t%s\nCommitID:%s\n", BuildName, BuildVersion, BuildTime, CommitID )
 		fmt.Printf("build name:\t%s\n", "dcpnode")
-		fmt.Printf("build ver:\t%s\n", "20211211")
+		fmt.Printf("build ver:\t%s\n", "20211218")
 
 		os.Exit(0)
 	}
