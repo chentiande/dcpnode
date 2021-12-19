@@ -623,9 +623,9 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 			cfg, _ := httppost(token, dataurl+"?dentification="+omcconf+"&token="+token, "")
 			result := MakeOmcConf(cfg)
-			ioutil.WriteFile(omcconf, []byte(result), fs.FileMode(0777))
+			ioutil.WriteFile("config/datasource/"+omcconf, []byte(result), fs.FileMode(0777))
 
-			ioutil.WriteFile("."+omcconf+"."+hash, []byte(hash), fs.FileMode(0777))
+			ioutil.WriteFile("config/datasource/."+omcconf+"."+hash, []byte(hash), fs.FileMode(0777))
 		}
 	}
 
