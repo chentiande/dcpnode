@@ -561,6 +561,17 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	//如果传参中配置了conf参数，就按照配置文件模板生成配置文件
 
 	if conf != "" {
+		
+		targetType:= gjson.Get(data, string("targetType")).String()
+		if targetType=="0"{
+			conf="gptoftp.xml"
+		}
+		if targetType=="1"{
+			conf="gptogp.xml"
+		}
+		if targetType=="2"{
+			conf="gptokafka.xml"
+		}
 
 		//如果带f参数先删后更新
 
