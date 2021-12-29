@@ -561,16 +561,19 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	//如果传参中配置了conf参数，就按照配置文件模板生成配置文件
 
 	if conf != "" {
-		
-		targetType:= gjson.Get(data, string("targetType")).String()
-		if targetType=="0"{
-			conf="gptoftp.xml"
+
+		targetType := gjson.Get(data, string("targetType")).String()
+		if targetType == "1" {
+			conf = "gptoftp.xml"
+			cmdname = "gptoftp.sh"
 		}
-		if targetType=="1"{
-			conf="gptogp.xml"
+		if targetType == "0" {
+			conf = "gptogp.xml"
+			cmdname = "gptogp.sh"
 		}
-		if targetType=="2"{
-			conf="gptokafka.xml"
+		if targetType == "2" {
+			conf = "gptokafka.xml"
+			cmdname = "gptokafka.sh"
 		}
 
 		//如果带f参数先删后更新
@@ -601,7 +604,6 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 			bbbbbb = strings.ReplaceAll(bbbbbb, "[", "")
 			bbbbbb = strings.ReplaceAll(bbbbbb, "]", "")
 			bbbbbb = strings.ReplaceAll(bbbbbb, "\"", "")
-			bbbbbb = strings.ReplaceAll(bbbbbb, ",", "|")
 
 			result = strings.ReplaceAll(result, string(v), bbbbbb)
 
@@ -823,7 +825,7 @@ func main() {
 	if showVer {
 		// Printf( "build name:\t%s\nbuild ver:\t%s\nbuild time:\t%s\nCommitID:%s\n", BuildName, BuildVersion, BuildTime, CommitID )
 		fmt.Printf("build name:\t%s\n", "dcpnode")
-		fmt.Printf("build ver:\t%s\n", "20211218")
+		fmt.Printf("build ver:\t%s\n", "20211229")
 
 		os.Exit(0)
 	}
