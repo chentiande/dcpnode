@@ -44,7 +44,7 @@ type Message struct {
 	Taskid  string `json:"taskid"`
 	Pid     string `json:"pid"`
 	Filelog string `json:"filelog"`
-	Status  bool   `json:"status"`
+	Status  int   `json:"status"`
 	Errinfo string `json:"errinfo"`
 }
 
@@ -353,20 +353,20 @@ func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string
 	//如果执行的不是sh命令，拒绝执行
 	if len(command) < 4 || command[len(command)-3:] != ".sh" {
 		log.Println("run cmd:"+command, ",执行命令非法，请检查", "taskid:"+taskid)
-		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo:"执行命令非法，请检查"}`
+		return `{"taskid":"-1","pid":-1,"filelog":"","status":2,"errinfo":"执行命令非法，请检查"}`
 
 	}
 	//如果执行命令不存在，返回提示
 	if _, err := os.Stat(command); err != nil {
 		log.Println("run cmd:"+command, ",执行脚本不存在，请检查", "taskid:"+taskid)
-		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo:"执行脚本不存在，请检查"}`
+		return `{"taskid":"-1","pid":-1,"filelog":"","status":2,"errinfo":"执行脚本不存在，请检查"}`
 
 	}
 	//检测当前主机cpu和内存是否超过阈值，如果超过拒绝服务
 	if p.cpulimit < p.cpu || p.memlimit < p.mem {
 		errinfo1 := "主机资源超标:cpu=" + strconv.FormatFloat(p.cpu, 'f', -1, 32) + "   mem=" + strconv.FormatFloat(p.mem, 'f', -1, 32)
 		log.Println(errinfo1, ",执行命令被拒绝,run cmd:"+command, ",taskid:"+taskid+" p1:"+p1+" p2:"+p2+" p3:"+p3+" p4:"+p4)
-		return `{"taskid":"-1","pid":-1,"filelog":"","status":false,"errinfo":"` + errinfo1 + `"}`
+		return `{"taskid":"-1","pid":-1,"filelog":"","status":1,"errinfo":"` + errinfo1 + `"}`
 	}
 	log.Println("run cmd:" + command + " $1:" + taskid + " $2:" + p1 + " $3:" + p2 + " $4:" + p3 + " $5:" + p4)
 	var cc *exec.Cmd
@@ -388,7 +388,7 @@ func getcmd(p *MyMux, command string, p1 string, p2 string, p3 string, p4 string
 	//返回消息定义
 	var msg Message
 	msg.Taskid = taskid
-	msg.Status = true
+	msg.Status = 0
 	msg.Filelog = "log/" + taskid + ".log"
 	msg.Errinfo = ""
 	//启动线程执行命令
@@ -615,7 +615,7 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 			rep, err := httppost(r.Header.Get("token"), cmdname, result)
 			if err != nil {
 				log.Println(err)
-				fmt.Fprintf(w, `{"taskid":"`+taskid+`","pid":-1,"filelog":"","status":false,"errinfo:`+err.Error()+`}`)
+				fmt.Fprintf(w, `{"taskid":"`+taskid+`","pid":-1,"filelog":"","status":false,"errinfo":`+err.Error()+`}`)
 				return
 			} else {
 				fmt.Fprintf(w, rep)
