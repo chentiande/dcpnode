@@ -11,7 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-		"os"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -44,7 +44,7 @@ type Message struct {
 	Taskid  string `json:"taskid"`
 	Pid     string `json:"pid"`
 	Filelog string `json:"filelog"`
-	Status  int   `json:"status"`
+	Status  int    `json:"status"`
 	Errinfo string `json:"errinfo"`
 }
 
@@ -574,6 +574,10 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 			conf = "gptokafka.xml"
 			cmdname = "gptokafka.sh"
 		}
+		if targetType == "3" {
+			conf = "gptohdfs.xml"
+			cmdname = "gptohdfs.sh"
+		}
 
 		//如果带f参数先删后更新
 
@@ -602,7 +606,7 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 			bbbbbb = strings.ReplaceAll(bbbbbb, "[", "")
 			bbbbbb = strings.ReplaceAll(bbbbbb, "]", "")
-			bbbbbb = strings.ReplaceAll(bbbbbb, "\"", "")
+			//bbbbbb = strings.ReplaceAll(bbbbbb, "\"", "")
 
 			result = strings.ReplaceAll(result, string(v), bbbbbb)
 
@@ -824,11 +828,10 @@ func main() {
 	if showVer {
 		// Printf( "build name:\t%s\nbuild ver:\t%s\nbuild time:\t%s\nCommitID:%s\n", BuildName, BuildVersion, BuildTime, CommitID )
 		fmt.Printf("build name:\t%s\n", "dcpnode")
-		fmt.Printf("build ver:\t%s\n", "20220215")
+		fmt.Printf("build ver:\t%s\n", "20220321")
 
 		os.Exit(0)
 	}
-
 
 	var one sync.Mutex
 	mux := &MyMux{token, 0, 0, one, cpulimit, memlimit}
