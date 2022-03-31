@@ -553,7 +553,7 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 	} else {
 		cmdtype = gjson.Get(string(s), string("type")).String()
 	}
-
+	log.Println("收到的完整消息内容为:", string(s))
 	data := gjson.Get(string(s), string("spc")).String()
 	log.Println("收到的请求内容为:", data)
 
@@ -628,7 +628,10 @@ func index(w http.ResponseWriter, r *http.Request, p *MyMux) {
 
 		}
 
-		ioutil.WriteFile(taskid+".xml", []byte(result), fs.FileMode(0777))
+		err = ioutil.WriteFile(taskid+".xml", []byte(result), fs.FileMode(0777))
+		if err != nil {
+			log.Println(err)
+		}
 
 	}
 
@@ -828,7 +831,7 @@ func main() {
 	if showVer {
 		// Printf( "build name:\t%s\nbuild ver:\t%s\nbuild time:\t%s\nCommitID:%s\n", BuildName, BuildVersion, BuildTime, CommitID )
 		fmt.Printf("build name:\t%s\n", "dcpnode")
-		fmt.Printf("build ver:\t%s\n", "20220321")
+		fmt.Printf("build ver:\t%s\n", "20220330")
 
 		os.Exit(0)
 	}
